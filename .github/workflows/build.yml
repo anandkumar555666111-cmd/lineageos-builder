@@ -1,0 +1,64 @@
+name: Build LineageOS for Infinix Note 30 5G
+
+on:
+  workflow_dispatch: # Allows you to start the build manually with a button click
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Maximize Build Space
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 20480
+        swap-size-mb: 10240
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.1-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3-pip
+
+    - name: Install Repo Tool
+      run: |
+        mkdir -p ~/bin
+        curl https://googleapis.com > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo ln -sf ~/bin/repo /usr/bin/repo
+
+    - name: Initialize LineageOS Source
+      run: |
+        mkdir android
+        cd android
+        git config --global user.name "Infinix Builder"
+        git config --global user.email "builder@lineageos.org"
+        # Syncing Lineage 21 (Android 14) as a baseline for the trees
+        repo init -u https://github.com -b lineage-21.0 --depth=1
+        repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags
+
+    - name: Clone Infinix Note 30 5G Trees
+      run: |
+        cd android
+        # Clones the custom paths matching the developer's exact repositories
+        git clone https://github.com -b lineage-23.2 device/infinix/X6711
+        git clone https://github.com -b main vendor/infinix/X6711
+        git clone https://github.com -b lineage-23.0 kernel/infinix/X6711
+
+    - name: Build the ROM
+      run: |
+        cd android
+        source build/envsetup.sh
+        breakfast X6711
+        brunch X6711
+      continue-on-error: true
+
+    - name: Upload Flashable ROM Zip
+      uses: softprops/action-gh-release@v1
+      with:
+        files: android/out/target/product/X6711/lineage-*.zip
+        tag_name: LineageOS-X6711-${{ github.run_id }}
+        name: LineageOS Build for Infinix Note 30 5G (X6711)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
